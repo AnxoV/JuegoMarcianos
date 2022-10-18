@@ -1,5 +1,44 @@
-let canvas;
-let enemies;
+let game;
+
+/**
+ * Controller of the application
+ * 
+ * @see {@link Canvas}
+ * @see {@link Enemy}
+ * @see {@link Player}
+ */
+class Game {
+    /**
+     * @param {Canvas} canvas The {@link Canvas} of the game
+     * @param {Enemy[]} enemies The {@link Enemy} array of the game 
+     * @param {Player} player The {@link Player} of the game
+     */
+    constructor(canvas, enemies, player) {
+        this.canvas = canvas;
+        this.enemies = enemies;
+        this.player = player;
+        this.difficulty = 1;
+        this.state = true;
+    }
+
+    /**
+     * Starts the game
+     */
+    init() {
+        this.canvas = new Canvas(document.getElementById("canvas"));
+        this.enemies = [];
+        this.player = new Player();
+        addEventListener("click", mouseclick);
+        // Main interval for updating the canvas
+        // _this_ object reference is lost when trying
+        // to directly pass the function reference to setInterval
+        // Ex.: setInterval(canvas.frame, 100); -> Result: _this_ reference lost
+        // Instead use an arrow function: setInterval(() => function(), delay);
+        setInterval(() => this.canvas.frame(), 100);
+        // Timeout for spawning enemies
+        setTimeout(timeout, 1000*this.difficulty);
+    }
+}
 
 /**
  * Wraps around the canvas element in order to
@@ -10,12 +49,14 @@ class Canvas {
      * @param {HTMLElement} canvas The HTML element of the canvas
      */
     constructor(canvas) {
-        this.canvas = canvas;
-        this.ctx = this.canvas.getContext("2d");
+        this.element = canvas;
+        this.ctx = this.element.getContext("2d");
+        this.ctx.textAlign = "center";
+        this.ctx.font = "bold 20px sans-serif";
     }
 
     /**
-     * Refreshes the canvas by painting a white rectangle over it
+     * Updates the canvas by painting a white rectangle over it
      */
     refresh() {
         this.ctx.fillStyle = "#fff";
@@ -23,17 +64,28 @@ class Canvas {
     }
 
     /**
-     * @returns {Number} The width of the canvas
+     * Updates the point score
      */
-    width() {
-        return this.canvas.width;
+    refreshPoints() {
+        this.ctx.fillStyle = this.mapColor();
+        this.ctx.fillText(game.player.points, this.width()/2, this.height()/2);
     }
 
     /**
-     * @returns {Number} The height of the canvas
+     * Loads the Game Over screen
      */
-    height() {
-        return this.canvas.height;
+    loadGOScreen() {
+        this.ctx.fillStyle = "#f00";
+        this.ctx.fillRect(this.width()/6, this.height()/6, this.width()*4/6, this.height()*4/6);
+        this.ctx.fillStyle = "#000";
+        this.ctx.font = "20px sans-serif";
+        let string = "¡Has perdido!\nLos marcianos te han superado.\nPuntuación: " + game.player.points;
+        let offset = -20;
+        string.split("\n").forEach(s => {
+            this.ctx.fillText(s, this.width()/2, this.height()/2+offset);
+            offset += 20;
+        });
+        
     }
 
     /**
@@ -41,9 +93,37 @@ class Canvas {
      */
     frame() {
         this.refresh();
-        enemies.forEach(enemy => {
+        game.enemies.forEach(enemy => {
             enemy.draw();
         });
+        if(game.state)
+            this.refreshPoints();
+        else
+            this.loadGOScreen();
+    }
+
+    /**
+     * Maps a color from green to red based
+     * on the amount of enemies
+     */
+    mapColor() {
+        let r = (game.enemies.length*255/20);
+        let g = ((20-game.enemies.length)*255/20);
+        return "rgb(" + r + ", " + g + ", 0)";
+    }
+
+    /**
+     * @returns {Number} The width of the canvas
+     */
+    width() {
+        return this.element.width;
+    }
+
+    /**
+     * @returns {Number} The height of the canvas
+     */
+    height() {
+        return this.element.height;
     }
 }
 
@@ -112,6 +192,30 @@ class Enemy {
 }
 
 /**
+ * Represents the player class
+ */
+class Player {
+    constructor() {
+        this.points = 0;
+    }
+
+    /**
+     * Adds one point to the player score and updates the canvas border color
+     */
+    updateScore() {
+        this.points++;
+    }
+
+    /**
+     * Sets the player points to 0
+     */
+    reset() {
+        this.points = 0;
+    }
+
+}
+
+/**
  * Helper function to determine the absolute position
  * of an element in the canvas by iterating backwards
  * through the DOM hierarchy from the element.
@@ -143,47 +247,45 @@ function find_first(array, element) {
  * and removes only the enemy the player clicked
  * @param {Event} e The triggered event
  */
- function mouseclick(e) {
+function mouseclick(e) {
     let collided = false;
-    for (let i = 0; i < enemies.length && !collided; i++) {
-        const canvasxy = element_coords(canvas.canvas);
+    for (let i = 0; i < game.enemies.length && !collided && game.state; i++) {
+        let enemy = game.enemies[i];
+        const canvasxy = element_coords(game.canvas.element);
         const xy = {
             x: e.clientX-canvasxy.x,
             y: e.clientY-canvasxy.y
-        };
+        }
         
-        if (enemies[i].rect.hasCollided(xy)) {
-            enemies.splice(find_first(enemies, enemies[i]), 1);
+        if (enemy.rect.hasCollided(xy)) {
+            game.enemies.splice(find_first(game.enemies, enemy), 1);
+            game.player.updateScore();
+            game.canvas.element.style.borderColor = game.canvas.mapColor();
             collided = true;
         }
     }
 }
 
-/**
- * Initializes the game
- */
-function initGame() {
-    canvas = new Canvas(document.getElementById("canvas"));
-    enemies = [];
-    addEventListener("click", mouseclick);
-    // Main interval for updating the canvas
-    // _this_ object reference is lost when trying
-    // to directly pass the function reference to setInterval
-    // Ex.: setInterval(canvas.frame, 100); -> Result: _this_ reference lost
-    // Instead use an arrow function: setInterval(() => function(), delay);
-    setInterval(() => canvas.frame(), 100);
-    // Interval for spawning enemies
-    setInterval(function() {
-        const rect = new Rect({
-                                x: Math.random()*(canvas.width()-50),
-                                y: Math.random()*(canvas.height()-50)
-                            },
-                            {
-                                w: 50,
-                                h: 50
-                            });
-        enemies.push(Enemy.of(canvas.ctx, rect, "img/enemy.png"));
-    }, 1000);
+function timeout() {
+    const rect = new Rect({
+        x: Math.random()*(game.canvas.width()-50),
+        y: Math.random()*(game.canvas.height()-50)
+    },
+    {
+        w: 50,
+        h: 50
+    });
+    game.enemies.push(Enemy.of(canvas.ctx, rect, "img/enemy.png"));
+    if (1000*game.difficulty*0.98 > 100)
+        game.difficulty *= 0.98;
+    if (game.enemies.length < 20) {
+        game.canvas.element.style.borderColor = game.canvas.mapColor();
+        setTimeout(timeout, 1000*game.difficulty);
+    } else
+        game.state = false;
 }
 
-window.onload = initGame;
+game = new Game(new Canvas(document.getElementById("canvas")),
+                [],
+                new Player());
+window.onload = game.init;
